@@ -5,9 +5,10 @@ namespace App\Services;
 
 use App\Models\Dump;
 use App\Models\Location;
+use App\Models\Municipality;
 use App\Models\Region;
 use App\Traits\ExportFileNameTrait;
-use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Storage;
 
 // TODO: not yet finished
 
@@ -15,14 +16,10 @@ class ExportService
 {
     use ExportFileNameTrait;
 
-    private int $updatedSince = 50;
-    private string $base = 'app/public';
-    private array $references = ['volume', 'access', 'irsop', 'terrain'];
-    private array $models = ['trashType', 'estimatedTrashVolume', 'coordinate', 'comments', 'location'];
+    private int $updatedSince = 30;
 
     private string $regionPath;
     private string $municipalityPath;
-    private array $all;
     private string $dateSince;
 
 
@@ -30,43 +27,49 @@ class ExportService
     {
         $this->regionPath = storage_path('app/public/regions/');
         $this->municipalityPath = storage_path('app/public/municipalities/');
-        $this->all = [...$this->references, ...$this->models];
-        $this->dateSince = now()->subDay($this->updatedSince)->toDateString();
+        $this->dateSince = now()->subDays($this->updatedSince)->toDateString();
     }
 
-    public function exportRegions()
+    public function update()
     {
-        $lastUpdatedRegions = $this->lastUpdated();
-        dd($lastUpdatedRegions);
-    }
+        $lastUpdatedRegions = $this->lastUpdatedRegions();
+        $lastUpdatedMunicipalities = $this->lastUpdatedMunicipalities();
 
-    private function lastUpdated(int $regionId = 0, $municipalityId = 0)
-    {
-        $dump = Dump::with(...$this->all)->where('updated_at', '>', $this->dateSince);
-        if($regionId) {
-            $dump->whereHas('region', function($query) use($regionId) {
-                $query->where('id', $regionId)->select('name')->get();
-            });
+        foreach ($lastUpdatedRegions as $region) {
+            $name = Region::find($region)->name;
+            $dumps = Location::with('dump')
+                ->where('region_id', $region)
+                ->get()->map(fn($e) => $e->dump)->toJson();
+            $this->export($name, $dumps);
         }
-        if($municipalityId) {
-            $dump->whereHas('municipality', function($query) use($municipalityId) {
-                $query->where('id', $municipalityId);
-            });
+
+        foreach ($lastUpdatedMunicipalities as $municipality) {
+            $name = Municipality::find($municipality)->name;
+            $dumps = Location::with('dump')
+                ->where('municipality_id', $municipality)
+                ->get()->map(fn($e) => $e->dump)->toJson();
+            $this->export($name, $dumps);
         }
-        $dump = $dump->get();
-        return $dump->toArray();
     }
 
-    private function lastUpdatedMunicipalities(): Collection
+    public function export(string $name, string $json): void
     {
-        return Location::with('dump', 'municipality')
-            ->whereHas('dump', function ($query) {
-                $query->where('updated_at', '>', now()->subDays($this->updatedSince)->toDateString());
-            })->get()->pluck('municipality')->pluck('id')->unique();
+        Storage::disk('local')->put($this->name($name), $json);
     }
 
-    private function regionData(int $id)
+    private function lastUpdatedRegions(): array
     {
+        return Dump::where('updated_at', '>', $this->dateSince)
+            ->get()->map(function ($e) {
+                return $e->region->id;
+            })->unique()->toArray();
+    }
 
+    private function lastUpdatedMunicipalities(): array
+    {
+        return Dump::where('updated_at', '>', $this->dateSince)
+            ->get()->map(function ($e) {
+                return $e->municipality->id;
+            })->unique()->toArray();
     }
 }

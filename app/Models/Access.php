@@ -7,7 +7,9 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Access extends Model
 {
-    protected $hidden = ['id'];
+    protected $hidden = [
+        'id'
+    ];
 
     public function dump(): HasOne
     {

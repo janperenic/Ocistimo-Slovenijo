@@ -30,15 +30,17 @@ class Dump extends Model
     ];
 
     protected $appends = [
-        'volume',
         'irsop',
+        'volume',
         'terrain',
         'access',
         'geodetic',
     ];
 
     protected $with = [
-        'coordinate'
+        'coordinate',
+        'trashType',
+        'comments'
     ];
 
     // Relationships
@@ -130,8 +132,8 @@ class Dump extends Model
         return [
             'region' => $this->region()->first()->name,
             'municipality' => $this->municipality()->first()->name,
-            'cadastral_municipality' => $this->cadastralMunicipality()->first()->name,
-            'cadastral_municipality_id' => $this->cadastralMunicipality()->first()->id,
+            //'cadastral_municipality' => $this->cadastralMunicipality()->first(),
+            //'cadastral_municipality_id' => $this->cadastralMunicipality()->first(),
             'portion' => $this->location()->first()->portion
         ];
     }

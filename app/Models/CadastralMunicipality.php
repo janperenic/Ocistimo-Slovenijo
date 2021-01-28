@@ -8,10 +8,6 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class CadastralMunicipality extends Model
 {
 
-    protected $hidden = [
-        'id'
-    ];
-
     public function location(): HasOne
     {
         return $this->hasOne(Location::class);
