@@ -5,8 +5,6 @@ namespace App\Services;
 
 use App\Models\Dump;
 use App\Models\Location;
-use App\Models\Municipality;
-use App\Models\Region;
 use App\Traits\ExportFileNameTrait;
 use Illuminate\Support\Facades\Storage;
 
@@ -17,59 +15,67 @@ class ExportService
     use ExportFileNameTrait;
 
     private int $updatedSince = 30;
-
-    private string $regionPath;
-    private string $municipalityPath;
     private string $dateSince;
+    private string $disk = 'local';
 
 
     public function __construct()
     {
-        $this->regionPath = storage_path('app/public/regions/');
-        $this->municipalityPath = storage_path('app/public/municipalities/');
         $this->dateSince = now()->subDays($this->updatedSince)->toDateString();
     }
 
     public function update()
     {
-        $lastUpdatedRegions = $this->lastUpdatedRegions();
-        $lastUpdatedMunicipalities = $this->lastUpdatedMunicipalities();
+        $disk = Storage::disk($this->disk);
 
-        foreach ($lastUpdatedRegions as $region) {
-            $name = Region::find($region)->name;
-            $dumps = Location::with('dump')
-                ->where('region_id', $region)
-                ->get()->map(fn($e) => $e->dump)->toJson();
-            $this->export($name, $dumps);
+        /**
+         * Fetch ids of regions and municipalities that were updated in the last $this->updatedSince days
+         */
+        $lastUpdatedRegions = $this->lastUpdated('region');
+        $lastUpdatedMunicipalities = $this->lastUpdated('municipality');
+
+        /**
+         * For each region check if file already exists and when it was created. If it doesn't exist or
+         * if it was created before our $this->updatedSince, its not updated with new info and needs to be replaced
+         */
+        foreach ($lastUpdatedRegions as $id) {
+            $path = 'regions/' . $id . '.json';
+            if (!$disk->exists($path) || $disk->lastModified($path) < now()->subDays($this->updatedSince)->timestamp) {
+                $this->generate($id, 'region', 'regions/');
+            }
         }
 
-        foreach ($lastUpdatedMunicipalities as $municipality) {
-            $name = Municipality::find($municipality)->name;
-            $dumps = Location::with('dump')
-                ->where('municipality_id', $municipality)
-                ->get()->map(fn($e) => $e->dump)->toJson();
-            $this->export($name, $dumps);
+        foreach ($lastUpdatedMunicipalities as $id) {
+            $path = 'regions/' . $id . '.json';
+            if (!$disk->exists($path) || $disk->lastModified($path) < now()->subDays($this->updatedSince)->timestamp) {
+                $this->generate($id, 'municipality', 'municipalities/');
+            }
         }
+
     }
 
-    public function export(string $name, string $json): void
+    private function generate(int $id, string $table, string $path): void
     {
-        Storage::disk('local')->put($this->name($name), $json);
+            $dumps = Location::with('dump', $table)
+                ->where($table . '_id', $id)
+                ->get()->pluck('dump')->toJson();
+            $this->export($id, $dumps, $path);
+
     }
 
-    private function lastUpdatedRegions(): array
+    private function export(string $name, string $json, string $path): void
     {
-        return Dump::where('updated_at', '>', $this->dateSince)
-            ->get()->map(function ($e) {
-                return $e->region->id;
-            })->unique()->toArray();
+        Storage::disk($this->disk)->put($path . $this->name($name), $json);
     }
 
-    private function lastUpdatedMunicipalities(): array
+    private function lastUpdated(string $table): array
     {
-        return Dump::where('updated_at', '>', $this->dateSince)
-            ->get()->map(function ($e) {
-                return $e->municipality->id;
-            })->unique()->toArray();
+        return Dump::with($table)
+            ->where('updated_at', '>', $this->dateSince)
+            ->get()
+            ->pluck($table)
+            ->pluck('id')
+            ->unique()
+            ->toArray();
     }
 }
