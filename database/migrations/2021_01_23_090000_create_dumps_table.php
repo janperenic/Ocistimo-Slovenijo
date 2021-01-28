@@ -29,6 +29,7 @@ class CreateDumpsTable extends Migration
             $table->foreignId('irsop_id')->constrained(); // podatki o inšpektoratu
             $table->timestamps();
             $table->softDeletes();
+            $table->index(['updated_at']);
         });
     }
 
